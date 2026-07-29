@@ -17,6 +17,18 @@ journal + performance dashboard of the trades you actually take.
 
 Then open http://localhost:8501
 
+## Deploy (Streamlit Community Cloud — free)
+
+1. Push this repo to GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
+3. Click **New app** → pick this repo, branch `main`, main file `app.py`.
+4. Hit **Deploy**. The first build installs `requirements.txt`; ~1–2 min.
+
+> **Note on the journal:** Streamlit Cloud's filesystem persists across
+> app restarts, so `trades.db` survives — but **a redeploy wipes it**.
+> For a long-term journal, back up `trades.db` or wire `db.py` to a
+> hosted DB (e.g. Turso, Supabase).
+
 ## What's inside
 
 | Tab | What it does |
