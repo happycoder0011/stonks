@@ -1,71 +1,57 @@
-# 📈 Stonks — NSE Swing-Trade Recommendation Engine & Journal
+# Stonks — NSE swing-trade ideas and journal
 
-A local Streamlit app that screens ~105 liquid NSE stocks for **daily (1–3 day)**
-and **weekly (1–2 week)** trade ideas using free Yahoo Finance data, and keeps a
-journal + performance dashboard of the trades you actually take.
+A Streamlit app that screens about 109 liquid NSE stocks for **breakout** (about 3 sessions) and **pullback** (1–2 weeks) ideas, sizes the position from your capital, and keeps a journal of the trades you actually take.
 
-> ⚠️ **Not investment advice.** This is a rule-based technical screener for
-> educational use. Always do your own research and manage risk.
+Not investment advice. It does not place orders.
 
 ## Run it
 
 ```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ./run.sh
-# or manually:
-.venv/bin/streamlit run app.py
 ```
 
-Then open http://localhost:8501
+Or `streamlit run app.py`. Then open http://localhost:8501.
 
-## Deploy (Streamlit Community Cloud — free)
+## Deploy (Streamlit Community Cloud)
 
-1. Push this repo to GitHub.
-2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
-3. Click **New app** → pick this repo, branch `main`, main file `app.py`.
-4. Hit **Deploy**. The first build installs `requirements.txt`; ~1–2 min.
+No API keys are required.
 
-> **Note on the journal:** Streamlit Cloud's filesystem persists across
-> app restarts, so `trades.db` survives — but **a redeploy wipes it**.
-> For a long-term journal, back up `trades.db` or wire `db.py` to a
-> hosted DB (e.g. Turso, Supabase).
+1. This repo is the app. Main file: `app.py`. Branch: `main`.
+2. [share.streamlit.io](https://share.streamlit.io) → **New app** → this repo, `main`, `app.py`.
+3. Leave secrets empty unless you want to lock the journal.
+4. Deploy. The build installs the pinned `requirements.txt`.
 
-## What's inside
+Optional journal lock: set `STONKS_PASSWORD` in the Cloud app's secrets (or as an environment variable). When it is unset, the journal is open. When it is set, the book stays readable and writes wait for that password. On Cloud, add it in Settings → Secrets:
 
-| Tab | What it does |
-|---|---|
-| 🎯 Recommendations | Top-scored ideas for the selected style, each with entry, ATR-based stop-loss & target, risk:reward, the signals that fired, and a price chart. One click logs the trade. |
-| 💼 My Trades | Open positions marked to the latest price, with stop-loss/target alerts; close positions to record realized P&L; full trade history. |
-| 📊 Dashboard | Realized P&L, win rate, average return, cumulative P&L curve, per-trade P&L, and breakdowns by style and sector. |
+```toml
+STONKS_PASSWORD = "choose-a-long-password"
+```
 
-## How scoring works (0–100)
+The journal is a SQLite file next to the app. A redeploy replaces the container and deletes `trades.db`. Back it up, or point `STONKS_DB` at a path you persist.
 
-**Daily mode** favors short bursts: 1-day and 5-day momentum, volume surge vs
-20-day average, RSI in the 55–70 momentum zone, price above the 20-day average,
-close near the day's high. Stop = entry − 1.5×ATR, target = entry + 2.5×ATR.
+## What a card means
 
-**Weekly mode** favors established trends: price > 20d > 50d averages with a
-rising 50d, MACD bullish (fresh crossovers score extra), steady 1-month momentum
-(parabolic moves are penalized), proximity to the 52-week high, healthy RSI.
-Stop = entry − 2×ATR, target = entry + 4×ATR.
+Signals use the **last completed NSE session**. A bar dated today is ignored until 15:30 IST.
 
-## Data
+- **Breakout:** close above the prior 20-day high, volume at least 1.5× the prior 20-day average, close in the top quarter of the day's range, above the 200-day average.
+- **Pullback:** 20-day average rising and stacked above the 50- and 200-day, the bar tags the 20-day average within 0.5 ATR, RSI(14) turns up from 40–55.
+- Both require average daily turnover of at least ₹20 crore.
+- Names are ordered by 20-day and 60-day return minus the Nifty 50. At most two names per sector.
+- A known earnings date inside the holding window removes the name. If the calendar cannot be read, the name stays and the card says so.
+- **No new longs** when the Nifty is below its 200-day average, or when the Nifty is up 10% or more in 20 sessions.
 
-- **Source:** Yahoo Finance via `yfinance` — free, no API key. End-of-day /
-  ~15-min delayed, refreshed every 15 minutes while the app is open.
-- **Universe:** Nifty-100-ish list in `universe.py` — edit it to add/remove stocks.
-- **Journal:** SQLite file `trades.db` in this folder (created on first trade).
+The stop is the further of the recent swing low and 1.5× ATR (breakout) or 2× ATR (pullback). The target is prior resistance or at least 2R. After price trades +1R, the plan moves the stop to entry. Time stop is 3 sessions or 10 sessions.
 
-### Upgrading to live data (optional)
+Shares = floor(capital × risk% / (entry − stop)).
 
-Delayed data is fine for daily/weekly swing trades. If you later want live ticks
-or in-app order placement, Zerodha's [Kite Connect](https://kite.trade) API
-(₹2,000/month) can be plugged into `engine.py` by replacing the two fetch
-functions — the rest of the app doesn't care where prices come from.
+## Backtest
 
-## Files
+The Backtest tab replays both setups on the same daily cache: signal on the close, enter the next open, exit on stop, target, the +1R breakeven (armed for the next session), or the time stop. Brokerage and slippage default to 10 bps per side and can be turned off.
 
-- `app.py` — Streamlit UI (three tabs)
-- `engine.py` — data fetch, indicators (RSI, MACD, ATR, SMAs), scoring
-- `universe.py` — the stock list
-- `db.py` — SQLite trade journal
-- `trades.db` — your trade history (back this up!)
+## Tests
+
+```bash
+.venv/bin/pytest
+```
